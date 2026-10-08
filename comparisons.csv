@@ -1,0 +1,3 @@
+case,before,after
+raw_vs_colmap1,colmap_raw.txt,colmap1.txt
+raw_vs_colmap2,colmap_raw.txt,colmap2.txt
