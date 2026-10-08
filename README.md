@@ -1,36 +1,46 @@
 # Camera-Evaluation
 
-比较 COLMAP `images.txt` 中相同图片的相机位姿。支持单组评估和 CSV 清单批量测试。
+比较 COLMAP `images.txt` 中相同图片的相机位姿。支持单组评估和直接编辑 main() 的批量测试。
 
 ```bash
 pip install -r requirements.txt
-
-# 仓库中两组数据分别与 raw 对比
-python batch_evaluate.py --manifest comparisons.csv --align se3 --match stem
-
-# 单组对比
-python evaluate_colmap_poses.py --before colmap_raw.txt --after colmap1.txt --align se3 --match stem --output-dir pose_evaluation
+python batch_evaluate.py
 ```
 
-## 批量测试
+## 批量测试：直接编辑 main()
 
-编辑 `comparisons.csv`，每行一个对比任务：
+打开 `batch_evaluate.py`，修改 `main()` 中的 `cases` 和选项：
 
-```csv
-case,before,after
-apple_1,/absolute/path/raw/images.txt,/absolute/path/refined1/images.txt
-apple_2,/absolute/path/raw/images.txt,/absolute/path/refined2/images.txt
+```python
+cases = [
+    ("apple_1", "/path/raw/sparse/0", "/path/result1/colmap_final"),
+    ("apple_2", "/path/raw/images.txt", "/path/result2/images.txt"),
+]
+output_dir = "batch_results"
+align = "se3"
+match = "stem"
+no_plots = False
 ```
 
-路径可为绝对路径，或相对于 CSV 所在目录的路径；包含逗号的路径需要 CSV 引号。case 必须唯一，不能包含路径分隔符。中文路径支持。
+每组三项分别为名称、before、after。路径支持 `images.txt` 文件或包含它的文件夹，也支持中文和 `~`；相对路径以脚本所在目录为基准。名称必须唯一且不能包含路径分隔符。
+
+也可以在自己的 Python 脚本中调用：
+
+```python
+from batch_evaluate import evaluate_cases
+
+evaluate_cases([
+    ("apple", "/path/before/sparse/0", "/path/after/colmap_final"),
+], output_dir="results", align="se3", match="stem", no_plots=True)
+```
+
+每个任务输出 `per_image.csv`、`summary.json`、`pose_changes.png`、`camera_centers.png`；总表为 `batch_results/batch_summary.csv`。CSV 仅用于输出，无需准备输入 CSV。失败任务记录错误并继续其他任务，存在失败时命令返回非零退出码。再次运行会覆盖成功任务对应的输出；以当前总表中的 status 判断结果，失败目录可能有旧结果。
+
+单组命令行入口仍可用：
 
 ```bash
-python batch_evaluate.py --manifest comparisons.csv --output-dir batch_results --align se3 --match stem
-# 只输出数值，批量更快
-python batch_evaluate.py --manifest comparisons.csv --no-plots
+python evaluate_colmap_poses.py --before colmap_raw.txt --after colmap1.txt --align se3 --match stem --output-dir pose_evaluation
 ```
-
-每个任务输出 `per_image.csv`、`summary.json`、`pose_changes.png`、`camera_centers.png`；总表为 `batch_results/batch_summary.csv`。失败任务记录错误并继续其他任务，存在失败时命令返回非零退出码。再次运行会覆盖成功任务对应的输出；以当前总表中的 status 判断结果，失败目录可能有旧结果。
 
 ## 指标和选项
 

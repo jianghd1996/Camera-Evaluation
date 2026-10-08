@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Run evaluations from a CSV manifest; paths resolve relative to the CSV."""
-import argparse
+"""Edit main() to run camera-pose comparisons on files or folders."""
 import csv
 import json
 from pathlib import Path
@@ -9,41 +8,54 @@ import sys
 
 
 def main():
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--manifest', required=True, help='CSV columns: case,before,after')
-    p.add_argument('--output-dir', default='batch_results')
-    p.add_argument('--align', choices=['none', 'se3', 'sim3'], default='se3')
-    p.add_argument('--match', choices=['exact', 'stem'], default='stem')
-    p.add_argument('--no-plots', action='store_true')
-    args = p.parse_args()
-    manifest = Path(args.manifest).resolve()
-    with manifest.open(encoding='utf-8-sig', newline='') as f:
-        reader = csv.DictReader(f)
-        if not {'case', 'before', 'after'} <= set(reader.fieldnames or []):
-            p.error('Manifest must have case,before,after columns')
-        rows = list(reader)
-    if not rows:
-        p.error('Manifest is empty')
+    # Edit these paths. Each path can be an images.txt file or its parent folder.
+    # Relative paths resolve relative to this script.
+    cases = [
+        ("raw_vs_colmap1", "colmap_raw.txt", "colmap1.txt"),
+        ("raw_vs_colmap2", "colmap_raw.txt", "colmap2.txt"),
+        # ("apple", "/path/before/sparse/0", "/path/after/colmap_final"),
+    ]
+    output_dir = "batch_results"
+    align = "se3"       # none / se3 / sim3
+    match = "stem"      # exact / stem (ignore filename extension)
+    no_plots = False
+    return evaluate_cases(cases, output_dir, align, match, no_plots)
+
+
+def evaluate_cases(cases, output_dir="batch_results", align="se3", match="stem", no_plots=False):
+    """Reusable batch API: cases is a list of (case_name, before_path, after_path)."""
+    if align not in {"none", "se3", "sim3"} or match not in {"exact", "stem"}:
+        raise ValueError("Invalid alignment or matching mode")
+    if not cases:
+        raise ValueError("No comparison cases configured")
+    base = Path(__file__).resolve().parent
+    def resolve_pose(path):
+        path = Path(path).expanduser()
+        if not path.is_absolute():
+            path = base / path
+        return path / "images.txt" if path.is_dir() else path
+    rows = [{"case": case, "before": str(before), "after": str(after)}
+            for case, before, after in cases]
     used = set()
     for row in rows:
         case = row['case']
         if not case or case in {'.', '..'} or '/' in case or '\\' in case or case in used:
-            p.error(f'Invalid or duplicate case name: {case!r}')
+            raise ValueError(f'Invalid or duplicate case name: {case!r}')
         used.add(case)
-    root = Path(args.output_dir).resolve()
+    root = (base / Path(output_dir).expanduser()).resolve()
     root.mkdir(parents=True, exist_ok=True)
     results = []
     for row in rows:
         dest = root / row['case']
         command = [sys.executable, str(Path(__file__).with_name('evaluate_colmap_poses.py')),
-                   '--before', str(manifest.parent / row['before']),
-                   '--after', str(manifest.parent / row['after']),
-                   '--output-dir', str(dest), '--align', args.align, '--match', args.match]
-        if args.no_plots:
+                   '--before', str(resolve_pose(row['before'])),
+                   '--after', str(resolve_pose(row['after'])),
+                   '--output-dir', str(dest), '--align', align, '--match', match]
+        if no_plots:
             command.append('--no-plots')
         run = subprocess.run(command, capture_output=True, text=True)
         result = {'case': row['case'], 'status': 'ok' if run.returncode == 0 else 'failed',
-                  'before': row['before'], 'after': row['after'], 'align': args.align, 'match': args.match}
+                  'before': row['before'], 'after': row['after'], 'align': align, 'match': match}
         if run.returncode:
             result['error'] = run.stderr.strip() or run.stdout.strip()
             print(f"FAILED {row['case']}: {result['error']}", file=sys.stderr)
